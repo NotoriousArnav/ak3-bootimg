@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { FastbootDevice } from "android-fastboot";
 import { formatBytes } from "../lib/bytes";
 import type { ConversionReport } from "../lib/convert/types";
+import { detectUsbMode, pickUsbDevice, USB_FILTERS, type UsbMode } from "../lib/usb/mode";
 import { AlertIcon, CheckIcon, ChipIcon, LockIcon, RefreshIcon, UsbIcon } from "./icons";
 
 interface FlashPanelProps {
@@ -50,7 +51,7 @@ async function getVar(device: FastbootDevice, name: string): Promise<string | nu
 function friendlyError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/no device|not found|notfound/i.test(message)) {
-    return "No fastboot device was selected. Reboot the phone to the bootloader (usually power + volume down) and try again.";
+    return "No device was selected. Reboot the phone to the bootloader (usually power + volume down) and try again.";
   }
   if (/access denied|permission|unable to open/i.test(message)) {
     return "USB access was denied. On Linux add a udev rule for the bootloader; on Windows install the Android bootloader / WinUSB driver. On macOS it usually just works.";
@@ -63,6 +64,7 @@ function friendlyError(error: unknown): string {
 export function FlashPanel({ bootImg, fileName, report, templateName, templateBytes }: FlashPanelProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [device, setDevice] = useState<DeviceSummary | null>(null);
+  const [usbMode, setUsbMode] = useState<UsbMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [bothSlots, setBothSlots] = useState(false);
@@ -105,10 +107,37 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
     setPhase("connecting");
     setError(null);
     setDevice(null);
+    setUsbMode(null);
     setConfirmed(false);
     setTypedProduct("");
     try {
-      appendLog("Requesting a WebUSB device (fastboot mode)…");
+      appendLog("Looking for a phone over WebUSB (Android/adb or bootloader)…");
+      let selected = await pickUsbDevice();
+      if (!selected) throw new Error("No USB device was selected.");
+
+      let mode: UsbMode;
+      try {
+        mode = await detectUsbMode(selected);
+      } catch {
+        // A previously paired device can be stale after a reboot. Ask again.
+        appendLog("The saved device is not reachable; choose the phone again.");
+        selected = await navigator.usb.requestDevice({ filters: USB_FILTERS });
+        mode = await detectUsbMode(selected);
+      }
+      setUsbMode(mode);
+
+      if (mode === "adb") {
+        appendLog("Phone is in Android (adb) mode — not the bootloader.");
+        setPhase("idle");
+        return;
+      }
+      if (mode === "unknown") {
+        throw new Error(
+          "This USB device does not expose an adb or fastboot interface. Select the phone itself (not a hub or charger) and make sure USB debugging or the bootloader is active.",
+        );
+      }
+
+      appendLog("Phone is in fastboot mode. Reading device info…");
       const fastboot = new FastbootDevice();
       await fastboot.connect();
       deviceRef.current = fastboot;
@@ -244,7 +273,7 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
         </span>
         <div>
           <h3>Flash with fastboot</h3>
-          <p>WebUSB talks directly to the bootloader from this tab. No adb, no drivers on macOS.</p>
+          <p>Detects whether the phone is in Android or bootloader mode, then flashes over WebUSB.</p>
         </div>
         <span className="badge">WebUSB</span>
       </div>
@@ -270,7 +299,7 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
               disabled={phase === "connecting" || phase === "flashing"}
             >
               <UsbIcon size={18} />
-              {phase === "connecting" ? "Waiting for device…" : device ? "Reconnect device" : "Connect fastboot device"}
+              {phase === "connecting" ? "Waiting for device…" : device ? "Reconnect device" : "Connect device"}
             </button>
             {device ? (
               <button className="btn btn-ghost" type="button" onClick={refreshDevice} disabled={phase === "flashing"}>
@@ -279,9 +308,23 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
               </button>
             ) : null}
             <span className="device-hint">
-              Phone must be in bootloader / fastboot mode, not Android.
+              Phone can be booted into Android with USB debugging, or into bootloader / fastboot mode.
             </span>
           </div>
+
+          {usbMode === "adb" ? (
+            <div className="callout note">
+              <UsbIcon size={20} />
+              <div>
+                <strong>Phone is in Android (adb) mode, not fastboot</strong>
+                <p>WebUSB can see the phone, but boot.img flashing needs the bootloader. Check and switch modes:</p>
+                <pre className="snippet">adb devices{"\n"}adb reboot bootloader{"\n"}fastboot devices</pre>
+                <p>
+                  Or power the phone off and hold power + volume down. Then click <strong>Connect device</strong> again.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {device ? (
             <div className="device-card">

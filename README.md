@@ -59,7 +59,8 @@ A standalone `boot.img` cannot install kernel modules, patch the ramdisk, or car
 
 The flash panel appears only when the browser exposes WebUSB (Chrome, Edge, Brave on desktop). It will:
 
-- Connect to a device already in bootloader/fastboot mode.
+- Connect to the phone whether it is booted into Android with USB debugging or sitting in the bootloader, then report which mode it detected.
+- If the phone is in Android/adb mode, show the commands to switch: `adb devices`, `adb reboot bootloader`, `fastboot devices` (or power off and hold power + volume down).
 - Read `product`, `slot-count`, `current-slot`, `unlocked`, and `partition-size:boot` before writing.
 - Refuse to flash when the bootloader reports locked, when the image is larger than the partition, or when the zip declares a different device (unless you explicitly type the product name).
 - Default to the **active slot only**. Flashing both slots is opt-in.
