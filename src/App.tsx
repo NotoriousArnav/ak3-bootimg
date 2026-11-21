@@ -12,12 +12,10 @@ import {
   BootIcon,
   CheckIcon,
   ChipIcon,
-  DownloadIcon,
   GitHubIcon,
+  HeartIcon,
   RefreshIcon,
-  ShieldIcon,
   TelegramIcon,
-  UsbIcon,
 } from "./components/icons";
 
 interface TemplateInfo {
@@ -280,42 +278,13 @@ export default function App() {
           </nav>
         </div>
 
-        <div className="hero-grid">
-          <div>
-            <h1>
-              Turn an AnyKernel zip into a <span className="accent">flashable boot image</span>.
-            </h1>
-            <p className="lede">
-              Unzip the package, swap its kernel into your stock boot header, repack, and optionally flash it straight to
-              the phone with WebUSB. Everything happens in this tab — files never leave your device.
-            </p>
-            <div className="hero-chips">
-              <span>
-                <ShieldIcon size={15} /> No uploads
-              </span>
-              <span>
-                <ChipIcon size={15} /> v0–v4 aware
-              </span>
-              <span>
-                <UsbIcon size={15} /> Fastboot over WebUSB
-              </span>
-            </div>
-          </div>
-          <div className="how-card">
-            <h3>What it does</h3>
-            <ol>
-              <li>
-                <span>1</span> Read <code>anykernel.sh</code> and the kernel payload
-              </li>
-              <li>
-                <span>2</span> Keep the template header, page size and ramdisk
-              </li>
-              <li>
-                <span>3</span> Repack the kernel and verify the result
-              </li>
-            </ol>
-            <p>AK3 normally does this on-device with magiskboot. This is the same repack, done offline.</p>
-          </div>
+        <div className="hero-copy">
+          <h1>
+            AnyKernel zip <span className="accent">→ boot.img</span>
+          </h1>
+          <p className="lede">
+            Runs entirely in your browser with WebAssembly. Your files never leave this device.
+          </p>
         </div>
       </header>
 
@@ -454,44 +423,26 @@ export default function App() {
           ) : null}
         </div>
 
-        {!result ? (
-          <section className="notes-grid">
-            <div className="info-card">
-              <BootIcon size={20} />
-              <h3>Header, not guesswork</h3>
-              <p>
-                The template's page size, load addresses, cmdline and OS version are preserved. Only the kernel (and its
-                size) changes, which is exactly what AnyKernel does on-device.
-              </p>
-            </div>
-            <div className="info-card">
-              <ShieldIcon size={20} />
-              <h3>Verified boot stays honest</h3>
-              <p>
-                AVB footers are stripped because they cover the kernel. An unlocked bootloader with a
-                verification-disabled vbmeta is required — the tool says so instead of pretending.
-              </p>
-            </div>
-            <div className="info-card">
-              <UsbIcon size={20} />
-              <h3>Flash only if supported</h3>
-              <p>
-                The flash button appears only when WebUSB exists. It checks the product, partition size and lock state
-                before writing, and keeps your template for rollback.
-              </p>
-            </div>
-          </section>
-        ) : null}
+
       </main>
 
       <footer>
-        <div className="footer-brand">
-          <DownloadIcon size={15} /> Built for the AnyKernel workflow · runs entirely client-side
+        <div className="footer-meta">
+          <span>Runs entirely client-side · no uploads</span>
+          <span className="footer-credit">
+            Made with <HeartIcon size={14} className="heart" /> by{" "}
+            <a href="https://github.com/NotoriousArnav" target="_blank" rel="noopener noreferrer">
+              @NotoriousArnav
+            </a>{" "}
+            and{" "}
+            <a href="https://opencode.ai" target="_blank" rel="noopener noreferrer">
+              OpenCode
+            </a>
+          </span>
         </div>
-        <p>
-          Not affiliated with Google, Motorola, Magisk, KernelSU or the AnyKernel project. Custom kernels can brick a
-          device. Keep stock firmware and a rescue tool ready. KMI compatibility is the kernel developer's job; this tool
-          only repacks.
+        <p className="footer-disclaimer">
+          Not affiliated with Google, Motorola, Magisk, KernelSU or AnyKernel. Custom kernels can brick a device; keep
+          stock firmware ready.
         </p>
       </footer>
     </div>

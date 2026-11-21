@@ -85,7 +85,7 @@ export function ReportView({
           <ShieldIcon size={20} />
           <div>
             <strong>No compatibility warnings</strong>
-            <p>This is a clean kernel-only repack. Device and partition checks still apply before flashing.</p>
+            <p>Clean kernel-only repack. Device and partition checks still apply before flashing.</p>
           </div>
         </div>
       )}
@@ -103,108 +103,6 @@ export function ReportView({
         </div>
       ) : null}
 
-      <div className="stats">
-        <Stat label="Header" value={`v${report.output.headerVersion} · ${report.output.pageSize} B pages`} />
-        <Stat label="Kernel" value={formatBytes(report.output.kernelSize)} />
-        <Stat
-          label="Ramdisk"
-          value={report.output.ramdiskSize === 0 ? "empty (init_boot)" : formatBytes(report.output.ramdiskSize)}
-        />
-        <Stat label="AVB" value={report.output.avb ? "present" : "stripped / none"} tone={report.output.avb ? "warn" : "good"} />
-        <Stat label="Target" value={target} />
-        <Stat label="Kernel version" value={shortVersion(report.kernel.linuxVersion)} />
-        <Stat label="Compression" value={report.kernel.compression} />
-        <Stat label="Build time" value={`${(report.durationMs / 1000).toFixed(1)} s`} />
-      </div>
-
-      <details className="panel" open>
-        <summary>
-          <span>What changed</span>
-          <span className="summary-hint">template → output</span>
-        </summary>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Field</th>
-                <th>Template</th>
-                <th>Output</th>
-              </tr>
-            </thead>
-            <tbody>
-              <DiffRow
-                label="Header"
-                before={`v${report.template.headerVersion} (${report.template.headerSize} B)`}
-                after={`v${report.output.headerVersion} (${report.output.headerSize} B)`}
-              />
-              <DiffRow label="Page size" before={String(report.template.pageSize)} after={String(report.output.pageSize)} />
-              <DiffRow
-                label="Kernel"
-                before={formatBytes(report.template.kernelSize)}
-                after={formatBytes(report.output.kernelSize)}
-              />
-              <DiffRow
-                label="Ramdisk"
-                before={formatBytes(report.template.ramdiskSize)}
-                after={formatBytes(report.output.ramdiskSize)}
-              />
-              <DiffRow
-                label="Boot signature"
-                before={formatBytes(report.template.signatureSize)}
-                after={formatBytes(report.output.signatureSize)}
-              />
-              <DiffRow label="AVB footer" before={report.template.avb ? "yes" : "no"} after={report.output.avb ? "yes" : "no"} />
-              <DiffRow label="OS version" before={report.template.osVersion} after={report.output.osVersion} />
-              <DiffRow label="File size" before={formatBytes(report.template.fileSize)} after={formatBytes(report.output.fileSize)} />
-            </tbody>
-          </table>
-        </div>
-        <p className="fineprint">
-          Kernel: <code>{report.kernel.sourceName}</code> · payload SHA-256{" "}
-          <code>{report.kernel.sha256.slice(0, 16)}…</code> · template kernel{" "}
-          <code>{report.templateKernel.sha256.slice(0, 12)}…</code>
-        </p>
-      </details>
-
-      <details className="panel">
-        <summary>
-          <span>AnyKernel package</span>
-          <span className="summary-hint">{report.ak3.kernelString ?? "no kernel.string"}</span>
-        </summary>
-        <div className="kv-grid">
-          <Stat label="Target partition" value={report.ak3.block ?? "unknown"} />
-          <Stat label="Device check" value={report.ak3.deviceCheck ? report.ak3.devices.join(", ") || "enabled" : "disabled"} />
-          <Stat label="Modules" value={report.ak3.modules || report.ak3.moduleFiles.length > 0 ? "yes" : "no"} />
-          <Stat label="Systemless" value={report.ak3.systemless ? "yes" : "no"} />
-          <Stat
-            label="Ramdisk edits"
-            value={report.ak3.ramdiskEdits.length > 0 ? report.ak3.ramdiskEdits.join(", ") : "none"}
-          />
-          <Stat
-            label="Extra images"
-            value={report.ak3.extraImages.length > 0 ? report.ak3.extraImages.map((image) => image.name).join(", ") : "none"}
-          />
-        </div>
-      </details>
-
-      <details className="panel">
-        <summary>
-          <span>Packed layout</span>
-          <span className="summary-hint">{formatBytes(bootImg.length)}</span>
-        </summary>
-        <div className="layout-list">
-          {report.output.layout
-            .filter((segment) => segment.size > 0)
-            .map((segment) => (
-              <div className="layout-row" key={`${segment.name}-${segment.offset}`}>
-                <span>{segment.name}</span>
-                <code>@ 0x{segment.offset.toString(16)}</code>
-                <span>{formatBytes(segment.size)}</span>
-              </div>
-            ))}
-        </div>
-      </details>
-
       <FlashPanel
         bootImg={bootImg}
         fileName={fileName}
@@ -212,6 +110,115 @@ export function ReportView({
         templateName={templateName}
         templateBytes={templateBytes}
       />
+
+      <details className="panel details-panel">
+        <summary>
+          <span>Report details</span>
+          <span className="summary-hint">stats · diff · package · layout</span>
+        </summary>
+
+        <div className="stats">
+          <Stat label="Header" value={`v${report.output.headerVersion} · ${report.output.pageSize} B pages`} />
+          <Stat label="Kernel" value={formatBytes(report.output.kernelSize)} />
+          <Stat
+            label="Ramdisk"
+            value={report.output.ramdiskSize === 0 ? "empty (init_boot)" : formatBytes(report.output.ramdiskSize)}
+          />
+          <Stat label="AVB" value={report.output.avb ? "present" : "stripped / none"} tone={report.output.avb ? "warn" : "good"} />
+          <Stat label="Target" value={target} />
+          <Stat label="Kernel version" value={shortVersion(report.kernel.linuxVersion)} />
+          <Stat label="Compression" value={report.kernel.compression} />
+          <Stat label="Build time" value={`${(report.durationMs / 1000).toFixed(1)} s`} />
+        </div>
+
+        <details className="panel nested-panel">
+          <summary>
+            <span>What changed</span>
+            <span className="summary-hint">template → output</span>
+          </summary>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Template</th>
+                  <th>Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                <DiffRow
+                  label="Header"
+                  before={`v${report.template.headerVersion} (${report.template.headerSize} B)`}
+                  after={`v${report.output.headerVersion} (${report.output.headerSize} B)`}
+                />
+                <DiffRow label="Page size" before={String(report.template.pageSize)} after={String(report.output.pageSize)} />
+                <DiffRow
+                  label="Kernel"
+                  before={formatBytes(report.template.kernelSize)}
+                  after={formatBytes(report.output.kernelSize)}
+                />
+                <DiffRow
+                  label="Ramdisk"
+                  before={formatBytes(report.template.ramdiskSize)}
+                  after={formatBytes(report.output.ramdiskSize)}
+                />
+                <DiffRow
+                  label="Boot signature"
+                  before={formatBytes(report.template.signatureSize)}
+                  after={formatBytes(report.output.signatureSize)}
+                />
+                <DiffRow label="AVB footer" before={report.template.avb ? "yes" : "no"} after={report.output.avb ? "yes" : "no"} />
+                <DiffRow label="OS version" before={report.template.osVersion} after={report.output.osVersion} />
+                <DiffRow label="File size" before={formatBytes(report.template.fileSize)} after={formatBytes(report.output.fileSize)} />
+              </tbody>
+            </table>
+          </div>
+          <p className="fineprint">
+            Kernel: <code>{report.kernel.sourceName}</code> · payload SHA-256{" "}
+            <code>{report.kernel.sha256.slice(0, 16)}…</code> · template kernel{" "}
+            <code>{report.templateKernel.sha256.slice(0, 12)}…</code>
+          </p>
+        </details>
+
+        <details className="panel nested-panel">
+          <summary>
+            <span>AnyKernel package</span>
+            <span className="summary-hint">{report.ak3.kernelString ?? "no kernel.string"}</span>
+          </summary>
+          <div className="kv-grid">
+            <Stat label="Target partition" value={report.ak3.block ?? "unknown"} />
+            <Stat label="Device check" value={report.ak3.deviceCheck ? report.ak3.devices.join(", ") || "enabled" : "disabled"} />
+            <Stat label="Modules" value={report.ak3.modules || report.ak3.moduleFiles.length > 0 ? "yes" : "no"} />
+            <Stat label="Systemless" value={report.ak3.systemless ? "yes" : "no"} />
+            <Stat
+              label="Ramdisk edits"
+              value={report.ak3.ramdiskEdits.length > 0 ? report.ak3.ramdiskEdits.join(", ") : "none"}
+            />
+            <Stat
+              label="Extra images"
+              value={report.ak3.extraImages.length > 0 ? report.ak3.extraImages.map((image) => image.name).join(", ") : "none"}
+            />
+          </div>
+        </details>
+
+        <details className="panel nested-panel">
+          <summary>
+            <span>Packed layout</span>
+            <span className="summary-hint">{formatBytes(bootImg.length)}</span>
+          </summary>
+          <div className="layout-list">
+            {report.output.layout
+              .filter((segment) => segment.size > 0)
+              .map((segment) => (
+                <div className="layout-row" key={`${segment.name}-${segment.offset}`}>
+                  <span>{segment.name}</span>
+                  <code>@ 0x{segment.offset.toString(16)}</code>
+                  <span>{formatBytes(segment.size)}</span>
+                </div>
+              ))}
+          </div>
+        </details>
+      </details>
     </section>
   );
 }

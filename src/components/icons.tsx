@@ -135,3 +135,11 @@ export function TelegramIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function HeartIcon(props: IconProps) {
+  return (
+    <svg {...base({ ...props, fill: "currentColor", stroke: "none" })}>
+      <path d="M12 21s-6.7-4.35-9.33-7.76C.54 10.56 1.1 7.1 3.56 5.2A5.4 5.4 0 0 1 12 6.09a5.4 5.4 0 0 1 8.44-.89c2.46 1.9 3.02 5.36.89 8.04C18.7 16.65 12 21 12 21Z" />
+    </svg>
+  );
+}
