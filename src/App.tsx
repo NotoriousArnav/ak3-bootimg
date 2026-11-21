@@ -267,7 +267,11 @@ export default function App() {
           <nav className="nav-links" aria-label="External links">
             <a className="nav-link" href="https://t.me/portov_official" target="_blank" rel="noopener noreferrer">
               <TelegramIcon size={16} />
-              <span>Portov Community</span>
+              <span>Portov Chat</span>
+            </a>
+            <a className="nav-link" href="https://t.me/portov_updates" target="_blank" rel="noopener noreferrer">
+              <TelegramIcon size={16} />
+              <span>Portov Updates</span>
             </a>
             <a className="nav-link" href="https://github.com/NotoriousArnav/ak3-bootimg" target="_blank" rel="noopener noreferrer">
               <GitHubIcon size={16} />
