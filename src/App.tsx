@@ -13,8 +13,10 @@ import {
   CheckIcon,
   ChipIcon,
   DownloadIcon,
+  GitHubIcon,
   RefreshIcon,
   ShieldIcon,
+  TelegramIcon,
   UsbIcon,
 } from "./components/icons";
 
@@ -252,14 +254,26 @@ export default function App() {
       <div className="backdrop" aria-hidden="true" />
 
       <header className="hero">
-        <div className="brand">
-          <span className="brand-mark">
-            <ChipIcon size={22} />
-          </span>
-          <span>
-            AK3 <span className="brand-arrow">→</span> boot.img
-          </span>
-          <span className="badge">browser-only</span>
+        <div className="topbar">
+          <div className="brand">
+            <span className="brand-mark">
+              <ChipIcon size={22} />
+            </span>
+            <span>
+              AK3 <span className="brand-arrow">→</span> boot.img
+            </span>
+            <span className="badge">browser-only</span>
+          </div>
+          <nav className="nav-links" aria-label="External links">
+            <a className="nav-link" href="https://t.me/portov_official" target="_blank" rel="noopener noreferrer">
+              <TelegramIcon size={16} />
+              <span>Portov Community</span>
+            </a>
+            <a className="nav-link" href="https://github.com/NotoriousArnav/ak3-bootimg" target="_blank" rel="noopener noreferrer">
+              <GitHubIcon size={16} />
+              <span>GitHub</span>
+            </a>
+          </nav>
         </div>
 
         <div className="hero-grid">
