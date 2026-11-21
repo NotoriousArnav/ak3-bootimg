@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from "react";
-import { FastbootDevice } from "android-fastboot";
+import { FastbootDevice, setDebugLevel } from "android-fastboot";
 import { formatBytes } from "../lib/bytes";
 import type { ConversionReport } from "../lib/convert/types";
 import { detectUsbMode, pickUsbDevice, USB_FILTERS, type UsbMode } from "../lib/usb/mode";
+import { connectAdb } from "../lib/usb/adb";
 import { AlertIcon, CheckIcon, ChipIcon, LockIcon, RefreshIcon, UsbIcon } from "./icons";
 
 interface FlashPanelProps {
@@ -61,6 +62,21 @@ function friendlyError(error: unknown): string {
   return message;
 }
 
+function friendlyAdbError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/unauthorized/i.test(message)) {
+    return "The phone has not authorized this browser yet. Unlock it, accept the “Allow USB debugging?” prompt (tick “Always allow”), then try again.";
+  }
+  if (/busy|claim|access denied|permission|unable to open/i.test(message)) {
+    return "WebUSB could not claim the phone's adb interface, usually because a local adb server or another browser tab is using it. Run adb kill-server (or close the other tab), keep USB debugging on, then try again.";
+  }
+  if (/no device|not found|notfound|disconnected/i.test(message)) {
+    return "The phone disappeared before adb finished connecting. Reconnect the cable, make sure USB debugging is on, and choose the phone again.";
+  }
+  if (/cancel/i.test(message)) return "Device selection was cancelled.";
+  return message;
+}
+
 export function FlashPanel({ bootImg, fileName, report, templateName, templateBytes }: FlashPanelProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [device, setDevice] = useState<DeviceSummary | null>(null);
@@ -73,7 +89,10 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
   const [progressLabel, setProgressLabel] = useState("");
   const [log, setLog] = useState<string[]>([]);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
+  const [adbBusy, setAdbBusy] = useState(false);
+  const [adbRebooted, setAdbRebooted] = useState(false);
   const deviceRef = useRef<FastbootDevice | null>(null);
+  const selectedUsbRef = useRef<USBDevice | null>(null);
 
   const supported = typeof navigator !== "undefined" && "usb" in navigator;
   const partitionSupported =
@@ -108,38 +127,89 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
     setError(null);
     setDevice(null);
     setUsbMode(null);
+    setAdbRebooted(false);
     setConfirmed(false);
     setTypedProduct("");
+    setDebugLevel(2);
+    console.info("[ak3-flash] connect clicked");
     try {
       appendLog("Looking for a phone over WebUSB (Android/adb or bootloader)…");
       let selected = await pickUsbDevice();
       if (!selected) throw new Error("No USB device was selected.");
+      console.info("[ak3-flash] picked device", { name: selected.productName, opened: selected.opened, serial: selected.serialNumber });
 
       let mode: UsbMode;
       try {
-        mode = await detectUsbMode(selected);
-      } catch {
+        mode = await detectUsbMode(selected, { keepOpen: true });
+      } catch (cause) {
+        console.warn("[ak3-flash] detectUsbMode failed on selected device, requesting again", cause);
         // A previously paired device can be stale after a reboot. Ask again.
         appendLog("The saved device is not reachable; choose the phone again.");
         selected = await navigator.usb.requestDevice({ filters: USB_FILTERS });
-        mode = await detectUsbMode(selected);
+        console.info("[ak3-flash] re-picked device", { name: selected.productName, opened: selected.opened, serial: selected.serialNumber });
+        mode = await detectUsbMode(selected, { keepOpen: true });
       }
+      selectedUsbRef.current = selected;
       setUsbMode(mode);
+      console.info("[ak3-flash] mode resolved", mode, { opened: selected.opened });
 
       if (mode === "adb") {
+        // adb path manages its own connection lifecycle.
+        if (selected.opened) {
+          console.debug("[ak3-flash] closing device before adb handoff");
+          await selected.close().catch((cause) => console.warn("[ak3-flash] failed to close before adb handoff", cause));
+        }
         appendLog("Phone is in Android (adb) mode — not the bootloader.");
         setPhase("idle");
         return;
       }
       if (mode === "unknown") {
+        if (selected.opened) await selected.close().catch(() => {});
         throw new Error(
           "This USB device does not expose an adb or fastboot interface. Select the phone itself (not a hub or charger) and make sure USB debugging or the bootloader is active.",
         );
       }
 
       appendLog("Phone is in fastboot mode. Reading device info…");
+      console.info("[ak3-flash] preparing fastboot connect", { opened: selected.opened, configurations: selected.configurations.length });
+
+      // android-fastboot opens/resets/selects/claims. We've already opened the
+      // device to read descriptors; opening again throws, and USB reset can
+      // reboot some bootloaders (observed as "reboots back to fastboot").
+      // Patch prototype methods for the duration of connect() so the guard
+      // applies even if android-fastboot gets a different JS wrapper object.
+      const usbProto = USBDevice.prototype as USBDevice & {
+        open: () => Promise<void>;
+        reset: () => Promise<void>;
+      };
+      const originalOpen = usbProto.open;
+      const originalReset = usbProto.reset;
+      const isTarget = (device: USBDevice) => device === selected || device.serialNumber === selected.serialNumber;
+      usbProto.open = async function patchedOpen(this: USBDevice) {
+        if (isTarget(this) && this.opened) {
+          console.debug("[ak3-flash] skipping device.open() because target device is already open");
+          return;
+        }
+        if (isTarget(this)) console.debug("[ak3-flash] device.open()", { opened: this.opened });
+        return originalOpen.call(this);
+      };
+      usbProto.reset = async function patchedReset(this: USBDevice) {
+        if (isTarget(this)) {
+          console.warn("[ak3-flash] skipping device.reset() to avoid bootloader reboot; remove this guard if fastboot becomes unstable");
+          return;
+        }
+        return originalReset.call(this);
+      };
+
       const fastboot = new FastbootDevice();
-      await fastboot.connect();
+      try {
+        console.info("[ak3-flash] calling fastboot.connect()");
+        await fastboot.connect();
+        console.info("[ak3-flash] fastboot.connect() resolved", { isConnected: fastboot.isConnected });
+      } finally {
+        usbProto.open = originalOpen;
+        usbProto.reset = originalReset;
+      }
       deviceRef.current = fastboot;
 
       const [productValue, slotCountValue, currentSlot, unlockedValue, userspaceValue] = await Promise.all([
@@ -174,7 +244,9 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
           summary.partitionSize ? formatBytes(summary.partitionSize) : "unknown"
         }`,
       );
+      console.info("[ak3-flash] connected summary", summary);
     } catch (cause) {
+      console.error("[ak3-flash] connect failed", cause);
       const message = friendlyError(cause);
       setError(message);
       setPhase("error");
@@ -256,6 +328,37 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
     }
   }
 
+  async function rebootViaAdb() {
+    const usb = selectedUsbRef.current;
+    if (!usb) {
+      setError("Choose the phone with Connect device first.");
+      return;
+    }
+    setAdbBusy(true);
+    setError(null);
+    try {
+      appendLog("Opening an adb connection to the phone…");
+      const adb = await connectAdb(usb);
+      appendLog(`adb connected · ${adb.serial}`);
+      try {
+        appendLog("Sending reboot to bootloader…");
+        await adb.rebootBootloader();
+      } finally {
+        await adb.close();
+      }
+      appendLog("Phone is rebooting to the bootloader. Wait for fastboot, then click Connect device again.");
+      setAdbRebooted(true);
+      setUsbMode(null);
+      setPhase("idle");
+    } catch (cause) {
+      const message = friendlyAdbError(cause);
+      setError(message);
+      appendLog(`ERROR ${message}`);
+    } finally {
+      setAdbBusy(false);
+    }
+  }
+
   async function copyLog() {
     try {
       await navigator.clipboard.writeText(log.join("\n"));
@@ -317,10 +420,34 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
               <UsbIcon size={20} />
               <div>
                 <strong>Phone is in Android (adb) mode, not fastboot</strong>
-                <p>WebUSB can see the phone, but boot.img flashing needs the bootloader. Check and switch modes:</p>
-                <pre className="snippet">adb devices{"\n"}adb reboot bootloader{"\n"}fastboot devices</pre>
                 <p>
-                  Or power the phone off and hold power + volume down. Then click <strong>Connect device</strong> again.
+                  WebUSB found the phone while Android is running. Accept the “Allow USB debugging?” prompt on the phone,
+                  then reboot straight to the bootloader:
+                </p>
+                <div className="flash-actions">
+                  <button className="btn btn-primary" type="button" onClick={rebootViaAdb} disabled={adbBusy}>
+                    <RefreshIcon size={16} />
+                    {adbBusy ? "Rebooting…" : "Reboot to bootloader"}
+                  </button>
+                </div>
+                <p>
+                  If it cannot claim the interface, run <code>adb kill-server</code> on this computer (or close other adb
+                  tools) and try again. Manual fallback:
+                </p>
+                <pre className="snippet">adb devices{"\n"}adb reboot bootloader{"\n"}fastboot devices</pre>
+                <p>Or power the phone off and hold power + volume down. Then click Connect device again.</p>
+              </div>
+            </div>
+          ) : null}
+
+          {adbRebooted ? (
+            <div className="callout good">
+              <RefreshIcon size={18} />
+              <div>
+                <strong>Rebooting to the bootloader</strong>
+                <p>
+                  The phone should reappear as a fastboot device in a few seconds. When it does, click{" "}
+                  <strong>Connect device</strong> to continue.
                 </p>
               </div>
             </div>
@@ -479,7 +606,7 @@ export function FlashPanel({ bootImg, fileName, report, templateName, templateBy
             <div className="callout danger">
               <AlertIcon size={18} />
               <div>
-                <strong>Fastboot error</strong>
+                <strong>USB error</strong>
                 <p>{error}</p>
               </div>
             </div>
