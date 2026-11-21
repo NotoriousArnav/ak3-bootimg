@@ -1,0 +1,8 @@
+node_modules
+dist
+.vercel
+.DS_Store
+*.local
+temp/*.zip
+temp/*.img
+!temp/.gitkeep
